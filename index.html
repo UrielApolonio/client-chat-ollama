@@ -1,0 +1,1991 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat Ollama (client)</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script>
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    </script>
+    <style>
+        :root {
+            --primary-color: #7B2CBF;
+            --secondary-color: #9D4EDD;
+            --accent-color: #5A189A;
+            --success-color: #4CAF50;
+            --error-color: #F44336;
+            --text-color: #333;
+            --light-bg: #f5f5f5;
+            --white: #ffffff;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            --border-radius: 8px;
+            --active-preset-bg: var(--accent-color);
+            --active-preset-text: var(--white);
+            --active-preset-border: 2px solid var(--primary-color);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--light-bg);
+            color: var(--text-color);
+            line-height: 1.6;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: var(--white);
+            padding: 15px 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: var(--shadow);
+            flex-wrap: wrap;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-title h1 {
+            font-size: 1.5rem;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-top: 5px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .btn-primary {
+            background-color: var(--accent-color);
+            color: var(--white);
+        }
+
+        .btn-success {
+            background-color: var(--success-color);
+            color: var(--white);
+        }
+
+        .btn-secondary {
+            background-color: #6c757d;
+            color: var(--white);
+        }
+
+        .btn-primary:hover, .btn-success:hover, .btn-secondary:hover {
+            opacity: 0.9;
+            transform: translateY(-2px);
+        }
+
+        .btn.btn-active {
+            background-color: var(--active-preset-bg);
+            color: var(--active-preset-text);
+            border: var(--active-preset-border);
+            box-shadow: 0 0 8px rgba(123, 44, 191, 0.7);
+            transform: scale(1.05);
+            opacity: 1;
+            background-image: none;
+        }
+
+        .btn.btn-secondary.btn-active {
+             border-color: var(--primary-color);
+             box-shadow: 0 0 8px rgba(123, 44, 191, 0.7);
+         }
+
+        .status-bar {
+            background-color: var(--success-color);
+            color: var(--white);
+            padding: 10px 15px;
+            box-shadow: var(--shadow);
+            position: fixed;
+            left: 0;
+            width: 100%;
+            z-index: 99;
+        }
+
+        .status-bar.error {
+            background-color: var(--error-color);
+        }
+
+        .status-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-info {
+            font-size: 0.9rem;
+            margin-top: 5px;
+        }
+
+        .container {
+            max-width: 1500px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            flex-direction: column;
+            flex-grow: 1;
+            width: 100%;
+        }
+
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--white);
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .user-message {
+            justify-content: flex-end;
+        }
+
+        .bot-message {
+            justify-content: flex-start;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 15px;
+            border-radius: 18px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            word-wrap: break-word;
+            overflow-wrap: break-word;
+        }
+
+        .bot-message .message-content {
+            background-color: #f0f0f0;
+            border-top-left-radius: 4px;
+            margin-left: 10px;
+            margin-right: 10px;
+        }
+
+        .user-message .message-content {
+            background-color: #e3f2fd;
+            border-top-right-radius: 4px;
+            margin-right: 10px;
+        }
+
+        .message-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            flex-shrink: 0;
+        }
+
+        .bot-avatar {
+            background-color: var(--primary-color);
+        }
+
+        .user-avatar {
+            background-color: #2196F3;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            background-color: #f9f9f9;
+            border-top: 1px solid #eee;
+            gap: 10px;
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            z-index: 100;
+        }
+
+        .message-input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 1rem;
+            resize: vertical;
+            min-height: 40px;
+        }
+
+        .send-btn, .clips-btn {
+            background-color: #2196F3;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 0 20px;
+            cursor: pointer;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .clips-btn {
+            position: relative;
+            padding-right: 25px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.4);
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            background-color: var(--white);
+            margin: auto;
+            padding: 20px;
+            border-radius: var(--border-radius);
+            box-shadow: var(--shadow);
+            width: 80%;
+            max-width: 600px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .close-button {
+            color: #aaa;
+            position: absolute;
+            top: 10px;
+            right: 15px;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close-button:hover,
+        .close-button:focus {
+            color: black;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        .modal-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .modal-section:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+
+        .modal-section h2 {
+            color: var(--accent-color);
+            margin-bottom: 10px;
+            font-size: 1.3rem;
+        }
+
+        .modal-input-group {
+            display: flex;
+            flex-direction: column;
+            margin-bottom: 10px;
+        }
+
+        .modal-input-group label {
+            font-weight: 600;
+            margin-bottom: 5px;
+        }
+
+        .modal-input-group input[type="text"],
+        .modal-input-group input[type="password"],
+        .modal-input-group input[type="number"],
+        .modal-input-group select,
+        .modal-input-group textarea {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 100%;
+        }
+
+        .modal-input-group input[type="checkbox"] {
+            width: auto;
+            margin-right: 10px;
+        }
+
+        .modal-input-group.checkbox-group {
+            flex-direction: row;
+            align-items: center;
+        }
+
+        .file-upload {
+            padding: 15px;
+            border: 2px dashed #ddd;
+            border-radius: var(--border-radius);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .file-upload:hover {
+            border-color: var(--primary-color);
+            background-color: rgba(123, 44, 191, 0.05);
+        }
+
+        .file-upload-input {
+            display: none;
+        }
+
+        #selectedFilesDisplay {
+            margin-top: 10px;
+            padding: 10px;
+            background-color: #e9e9e9;
+            border-radius: var(--border-radius);
+            display: none;
+        }
+        #selectedFilesDisplay ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        #selectedFilesDisplay li {
+            margin-bottom: 5px;
+        }
+        #clearFilesBtn {
+            margin-top: 10px;
+            margin-bottom: 15px;
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .header-right {
+                flex-direction: column;
+                align-items: flex-end;
+                width: 100%;
+            }
+            .modal-content {
+                width: 95%;
+            }
+            .message-content {
+                max-width: 85%;
+            }
+        }
+
+        .error-message {
+            color: var(--error-color);
+            background-color: #ffebee;
+            padding: 10px;
+            border-radius: 4px;
+            margin-bottom: 10px;
+            border-left: 4px solid var(--error-color);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: var(--white);
+            animation: spin 1s ease-in-out infinite;
+            margin-left: 5px;
+            vertical-align: middle;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .markdown pre {
+            background-color: #e0e0e0;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 0.9em;
+            position: relative;
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: break-all;
+        }
+
+        .markdown code {
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e0e0e0;
+            padding: 2px 4px;
+            border-radius: 3px;
+            overflow-wrap: break-word;
+            word-break: break-all;
+        }
+
+        #modelDetailsModal pre {
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: break-all;
+            background-color: #e0e0e0;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 0.9em;
+            position: relative;
+        }
+
+        #modelDetailsModal code {
+            overflow-wrap: break-word;
+            word-break: break-all;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e0e0e0;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+
+        .json-key { color: #A629B9; }
+        .json-string { color: #067201; }
+        .json-number { color: #013F70; }
+        .json-boolean { color: #9C1F01; }
+        .json-null { color: #515151; }
+
+        .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 {
+            margin-top: 20px;
+            margin-bottom: 10px;
+            color: var(--accent-color);
+        }
+        .markdown h1 { font-size: 2em; }
+        .markdown h2 { font-size: 1.75em; }
+        .markdown h3 { font-size: 1.5em; }
+        .markdown h4 { font-size: 1.25em; }
+        .markdown h5 { font-size: 1em; }
+        .markdown h6 { font-size: 0.875em; }
+
+        .markdown p {
+            margin-bottom: 10px;
+        }
+
+        .markdown ul, .markdown ol {
+            margin-left: 20px;
+            margin-bottom: 10px;
+            padding-left: 10px;
+        }
+        .markdown ul li {
+            list-style-type: disc;
+        }
+        .markdown ol li {
+            list-style-type: decimal;
+        }
+
+        .markdown blockquote {
+            border-left: 4px solid var(--secondary-color);
+            padding-left: 10px;
+            color: #666;
+            margin: 10px 0;
+            font-style: italic;
+        }
+
+        .markdown strong {
+            font-weight: bold;
+        }
+
+        .markdown em {
+            font-style: italic;
+        }
+
+        .markdown a {
+            color: var(--primary-color);
+            text-decoration: none;
+        }
+        .markdown a:hover {
+            text-decoration: underline;
+        }
+
+        .copy-btn {
+            background-color: var(--secondary-color);
+            color: var(--white);
+            padding: 6px 10px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            align-self: flex-start;
+            flex-shrink: 0;
+            margin-left: 5px;
+        }
+
+        .copy-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .file-attached-indicator {
+            display: none;
+            width: 10px;
+            height: 10px;
+            background-color: var(--accent-color);
+            border-radius: 50%;
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            border: 1px solid var(--white);
+        }
+
+        .error-message pre.html-error-display {
+            background-color: #fdd;
+            border: 1px solid var(--error-color);
+            padding: 15px;
+            border-radius: 5px;
+            max-height: 300px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-break: break-all;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.85em;
+            color: #333;
+        }
+
+        .critical-error {
+            background-color: #ffebee;
+            border: 2px solid var(--error-color);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+        }
+
+        .critical-error h3 {
+            color: var(--error-color);
+            margin-bottom: 10px;
+        }
+
+        .critical-error pre {
+            background-color: #f5f5f5;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-size: 0.85em;
+            white-space: pre-wrap;
+        }
+
+        #modelDetailsModal .modal-content {
+            max-width: 800px;
+        }
+        #modelDetailsModal .model-info {
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #eee;
+        }
+        #modelDetailsModal .model-info:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        #modelDetailsModal .model-info h3 {
+            color: var(--primary-color);
+            margin-bottom: 5px;
+        }
+        #modelDetailsModal .model-info p {
+            margin-bottom: 5px;
+            font-size: 0.95em;
+        }
+        #modelDetailsModal .model-info strong {
+            color: var(--accent-color);
+        }
+
+        #lastSentJsonModal pre {
+            white-space: pre-wrap;
+            overflow-wrap: break-word;
+            word-break: break-all;
+            background-color: #e0e0e0;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            margin: 10px 0;
+            font-size: 0.9em;
+            position: relative;
+        }
+
+        #lastSentJsonModal code {
+            overflow-wrap: break-word;
+            word-break: break-all;
+            font-family: 'Courier New', Courier, monospace;
+            background-color: #e0e0e0;
+            padding: 2px 4px;
+            border-radius: 3px;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <span></span>
+            <h1>Chat Ollama (client)</h1><h4> By Uriel</h4>
+        </div>
+        <div class="header-right">
+            <button id="clearChatBtn" class="btn btn-secondary">🗑️ Limpar Chat</button>
+            <button id="settingsBtn" class="btn btn-secondary">⚙️ Configurações</button>
+        </div>
+    </header>
+
+    <div id="statusBar" class="status-bar">
+        <div class="status-title">
+            <span id="statusTitle">Ollama configurado - Pronto para usar!</span>
+        </div>
+        <div class="status-info" id="statusInfo">
+            Pronto para conversar e analisar arquivos!
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="chat-container">
+            <div id="chatMessages" class="chat-messages">
+            </div>
+        </div>
+    </div>
+
+    <div class="chat-input">
+        <textarea id="messageInput" class="message-input" placeholder="Digite sua mensagem..." rows="3"></textarea>
+        <button id="clipsBtn" class="btn send-btn clips-btn">Anexar<span id="fileAttachedIndicator" class="file-attached-indicator"></span></button>
+        <button id="sendButton" class="btn send-btn">Enviar</button>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeSettingsModal">&times;</span>
+            <h2>Configurações</h2>
+
+            <div class="modal-section">
+                <h2>Endereço do Servidor Ollama</h2>
+                <div class="modal-input-group">
+                    <label for="ollamaApiUrlInput">URL da API Ollama:</label>
+                    <input type="text" id="ollamaApiUrlInput" placeholder="Ex: http://localhost:11434/api/chat">
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h2>Seleção de Modelo</h2>
+                <div class="modal-input-group">
+                    <label for="modelSelect">Selecione o modelo e ajuste o tamanho do contexto apropriadamente:</label>
+                    <select id="modelSelect">
+                        <!-- Options will be dynamically populated from Ollama API -->
+                        <option value="">Carregando modelos...</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h2>Tamanho do Contexto (num_ctx)</h2>
+                <div class="modal-input-group">
+                    <label for="numCtxSelect">Tamanho máximo do prompt de entrada em tokens: (~4 bytes/token)</label>
+                    <select id="numCtxSelect">
+                        <option value="default" selected>Padrão do Modelo</option>
+                        <option value="2048">2K tokens</option>
+                        <option value="4096">4K tokens</option>
+                        <option value="8192">8K tokens</option>
+                        <option value="16384">16K tokens</option>
+                        <option value="32768">32K tokens</option>
+                        <option value="65536">64K tokens</option>
+                        <option value="131072">128K tokens</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h2>Comprimento Máximo da Resposta (num_predict)</h2>
+                <div class="modal-input-group">
+                    <label for="numPredictSelect">Número máximo de tokens na resposta:</label>
+                    <select id="numPredictSelect">
+                        <option value="default" selected>Padrão do Modelo</option>
+                        <option value="128">128 tokens</option>
+                        <option value="256">256 tokens</option>
+                        <option value="512">512 tokens</option>
+                        <option value="1024">1024 tokens</option>
+                        <option value="2048">2048 tokens</option>
+                        <option value="4096">4096 tokens</option>
+                        <option value="8192">8192 tokens</option>
+                        <option value="16384">16384 tokens</option>
+                        <option value="32768">32768 tokens</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h2>Prompt do Sistema (system)</h2>
+                <div class="modal-input-group">
+                    <label for="systemPromptTextarea">Instruções iniciais para o modelo:</label>
+                    <textarea id="systemPromptTextarea" placeholder="Ex: Você é um assistente prestativo e detalhista..." rows="4"></textarea>
+                </div>
+                <div class="modal-input-group checkbox-group">
+                    <input type="checkbox" id="useDefaultSystemPrompt">
+                    <label for="useDefaultSystemPrompt">Usar Padrão do Modelo</label>
+                </div>
+                <div class="modal-input-group checkbox-group">
+                    <input type="checkbox" id="useContextMemory" checked>
+                    <label for="useContextMemory">Memória de Contexto</label>
+                </div>
+            </div>
+
+            <div class="modal-section">
+                <h2>Presets de Geração</h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;">
+                    <button id="presetConversacaoBtn" class="btn btn-primary">Preset "Conversação"</button>
+                    <button id="presetProgramacaoBtn" class="btn btn-primary">Preset "Programação"</button>
+                    <button id="presetCriativoBtn" class="btn btn-primary">Preset "Criativo"</button>
+                    <button id="presetPadraoModeloBtn" class="btn btn-secondary">Preset "Padrão do Modelo"</button>
+                </div>
+            </div>
+
+            <div class="modal-section" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <button id="viewLastSentJsonBtn" class="btn btn-primary">Ver Último Envio</button>
+                <button id="showSelectedModelInfoBtn" class="btn btn-primary">
+                    ℹ️ Informações do Modelo Selecionado
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <div id="fileUploadModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeFileUploadModal">&times;</span>
+            <h2>Anexar Arquivos</h2>
+
+            <div class="file-upload" id="fileUploadArea">
+                <input type="file" id="fileUploadInput" class="file-upload-input" multiple>
+                <p>Clique para adicionar arquivos ou arraste aqui</p>
+            </div>
+            <div id="selectedFilesDisplay">
+            </div>
+            <button id="clearFilesBtn" class="btn btn-primary">Limpar Arquivos Anexados</button>
+        </div>
+    </div>
+
+    <div id="modelDetailsModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeModelDetailsModal">&times;</span>
+            <h2>Detalhes do Modelo</h2>
+            <div id="modelDetailsContent">
+                <!-- Content generated via JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <div id="lastSentJsonModal" class="modal">
+        <div class="modal-content">
+            <span class="close-button" id="closeLastSentJsonModal">&times;</span>
+            <h2>Último JSON Enviado à API Ollama</h2>
+            <div id="lastSentJsonContent">
+                <!-- Content generated via JavaScript -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let apiUrl = localStorage.getItem('ollamaApiUrl') || 'http://localhost:11434/api/chat';
+        let activeFiles = [];
+        const MAX_FILES = 5;
+        let numCtx = localStorage.getItem('ollamaNumCtx') || '32768';
+        let selectedModelValue = localStorage.getItem('ollamaSelectedModel');
+        let chatHistory = [];
+
+        let numPredict = localStorage.getItem('ollamaNumPredict') || 'default';
+        let systemPrompt = localStorage.getItem('ollamaSystemPrompt') || '';
+        let useDefaultSystemPrompt = localStorage.getItem('ollamaUseDefaultSystemPrompt') === 'false' ? false : true;
+        let useContextMemory = localStorage.getItem('ollamaUseContextMemory') === 'false' ? false : true;
+
+        let temperature = null;
+        let topP = null;
+        let repeatPenalty = null;
+        let topK = null;
+        let minP = null;
+
+        let lastSentJson = null;
+
+        let activePresetName = localStorage.getItem('ollamaActivePreset') || 'padraoModelo';
+
+        const statusBar = document.getElementById('statusBar');
+        const statusTitle = document.getElementById('statusTitle');
+        const statusInfo = document.getElementById('statusInfo');
+        const chatMessages = document.getElementById('chatMessages');
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const modelSelect = document.getElementById('modelSelect');
+        const header = document.querySelector('header');
+        const chatInput = document.querySelector('.chat-input');
+        const container = document.querySelector('.container');
+
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsModal = document.getElementById('settingsModal');
+        const closeSettingsModalBtn = document.getElementById('closeSettingsModal');
+        const ollamaApiUrlInput = document.getElementById('ollamaApiUrlInput');
+        const numCtxSelect = document.getElementById('numCtxSelect');
+
+        const numPredictSelect = document.getElementById('numPredictSelect');
+        const systemPromptTextarea = document.getElementById('systemPromptTextarea');
+        const useDefaultSystemPromptCheckbox = document.getElementById('useDefaultSystemPrompt');
+        const useContextMemoryCheckbox = document.getElementById('useContextMemory');
+
+        const presetConversacaoBtn = document.getElementById('presetConversacaoBtn');
+        const presetProgramacaoBtn = document.getElementById('presetProgramacaoBtn');
+        const presetCriativoBtn = document.getElementById('presetCriativoBtn');
+        const presetPadraoModeloBtn = document.getElementById('presetPadraoModeloBtn');
+
+        const clipsBtn = document.getElementById('clipsBtn');
+        const fileUploadModal = document.getElementById('fileUploadModal');
+        const closeFileUploadModalBtn = document.getElementById('closeFileUploadModal');
+        const fileUploadArea = document.getElementById('fileUploadArea');
+        const fileUploadInput = document.getElementById('fileUploadInput');
+        const selectedFilesDisplay = document.getElementById('selectedFilesDisplay');
+        const clearFilesBtn = document.getElementById('clearFilesBtn');
+
+        const fileAttachedIndicator = document.getElementById('fileAttachedIndicator');
+
+        const modelDetailsModal = document.getElementById('modelDetailsModal');
+        const closeModelDetailsModalBtn = document.getElementById('closeModelDetailsModal');
+        const modelDetailsContent = document.getElementById('modelDetailsContent');
+
+        const showSelectedModelInfoBtn = document.getElementById('showSelectedModelInfoBtn');
+
+        const viewLastSentJsonBtn = document.getElementById('viewLastSentJsonBtn');
+        const lastSentJsonModal = document.getElementById('lastSentJsonModal');
+        const closeLastSentJsonModalBtn = document.getElementById('closeLastSentJsonModal');
+        const lastSentJsonContent = document.getElementById('lastSentJsonContent');
+
+        const presetButtons = [
+            presetConversacaoBtn,
+            presetProgramacaoBtn,
+            presetCriativoBtn,
+            presetPadraoModeloBtn
+        ];
+
+        function sanitizeHtml(str) {
+            const temp = document.createElement('div');
+            temp.textContent = str;
+            return temp.innerHTML;
+        }
+
+        function safeMarkdownRender(content) {
+            try {
+                if (!content || typeof content !== 'string') {
+                    return '<div class="error-message">Conteúdo inválido recebido</div>';
+                }
+                const sanitizedContent = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+                const rendered = marked.parse(sanitizedContent);
+                return rendered;
+            } catch (error) {
+                console.error('Erro ao renderizar markdown:', error);
+                return `<div class="critical-error">
+                    <h3>Erro de Renderização</h3>
+                    <p>Não foi possível processar a resposta do bot. Conteúdo original:</p>
+                    <pre>${sanitizeHtml(content)}</pre>
+                </div>`;
+            }
+        }
+
+        function addMessage(type, content) {
+            try {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}-message`;
+                
+                const avatarDiv = document.createElement('div');
+                avatarDiv.className = `message-avatar ${type}-avatar`;
+                avatarDiv.textContent = type === 'bot' ? 'O' : 'U';
+                
+                const contentDiv = document.createElement('div');
+                contentDiv.className = 'message-content markdown';
+                
+                if (type === 'bot') {
+                    contentDiv.innerHTML = safeMarkdownRender(content);
+                    messageDiv.appendChild(avatarDiv);
+                    messageDiv.appendChild(contentDiv);
+
+                    const copyButton = document.createElement('button');
+                    copyButton.className = 'btn copy-btn';
+                    copyButton.textContent = 'Copiar';
+                    copyButton.onclick = () => {
+                        try {
+                            copyToClipboard(contentDiv.innerHTML);
+                        } catch (error) {
+                            console.error('Erro ao copiar:', error);
+                            alert('Erro ao copiar conteúdo');
+                        }
+                    };
+                    messageDiv.appendChild(copyButton);
+                } else {
+                    contentDiv.textContent = content;
+                    messageDiv.appendChild(contentDiv);
+                    messageDiv.appendChild(avatarDiv);
+                }
+                
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                adjustLayout();
+            } catch (error) {
+                console.error('Erro crítico ao adicionar mensagem:', error);
+                const errorDiv = document.createElement('div');
+                errorDiv.className = 'critical-error message bot-message';
+                errorDiv.innerHTML = `<div class="message-avatar bot-avatar">O</div><div class="message-content markdown">
+                    <h3>Erro Crítico de Interface</h3>
+                    <p>Falha ao exibir mensagem. Erro: ${error.message}</p>
+                    <pre>${sanitizeHtml(String(content))}</pre>
+                </div>`;
+                chatMessages.appendChild(errorDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        function createBotMessageElementForStreaming() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message bot-message`;
+            
+            const avatarDiv = document.createElement('div');
+            avatarDiv.className = `message-avatar bot-avatar`;
+            avatarDiv.textContent = 'O';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content markdown';
+            
+            messageDiv.appendChild(avatarDiv);
+            messageDiv.appendChild(contentDiv);
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            adjustLayout();
+
+            return contentDiv;
+        }
+
+        function adjustLayout() {
+            try {
+                const headerHeight = header.offsetHeight;
+                const chatInputHeight = chatInput.offsetHeight;
+
+                statusBar.style.top = `${headerHeight}px`;
+
+                const statusBarHeight = statusBar.offsetHeight;
+
+                container.style.marginTop = `${headerHeight + statusBarHeight}px`;
+                container.style.marginBottom = `${chatInputHeight}px`;
+            } catch (error) {
+                console.error('Erro ao ajustar layout:', error);
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', async function() {
+            try {
+                chatMessages.innerHTML = '';
+                ollamaApiUrlInput.value = apiUrl;
+                numCtxSelect.value = numCtx;
+                
+                numPredictSelect.value = numPredict;
+                systemPromptTextarea.value = systemPrompt;
+                useDefaultSystemPromptCheckbox.checked = useDefaultSystemPrompt;
+                systemPromptTextarea.disabled = useDefaultSystemPrompt;
+                useContextMemoryCheckbox.checked = useContextMemory;
+
+                applyPreset(activePresetName, false);
+                await fetchAndPopulateModels();
+
+                updateStatus(true, 'Ollama configurado - Pronto para usar!', 'Pronto para conversar e analisar arquivos!');
+                addMessage('bot', 'Olá! Sou o assistente Ollama. Como posso ajudar você hoje?');
+                setupFileUpload();
+                updateFileAttachedIndicator();
+                updateAttachedFilesStatus();
+                adjustLayout();
+            } catch (error) {
+                console.error('Erro na inicialização:', error);
+                document.body.innerHTML = `<div class="critical-error">
+                    <h1>Erro de Inicialização</h1>
+                    <p>A aplicação falhou ao inicializar. Recarregue a página.</p>
+                    <pre>${error.message}</pre>
+                </div>`;
+            }
+        });
+
+        window.addEventListener('resize', adjustLayout);
+        messageInput.addEventListener('input', adjustLayout);
+        messageInput.addEventListener('focus', adjustLayout);
+
+        function openModal(modalElement) {
+            modalElement.style.display = 'flex';
+        }
+
+        function closeModal(modalElement) {
+            modalElement.style.display = 'none';
+        }
+
+        settingsBtn.addEventListener('click', () => openModal(settingsModal));
+        closeSettingsModalBtn.addEventListener('click', () => closeModal(settingsModal));
+        showSelectedModelInfoBtn.addEventListener('click', showSelectedModelInfo);
+        closeModelDetailsModalBtn.addEventListener('click', () => closeModal(modelDetailsModal));
+
+        viewLastSentJsonBtn.addEventListener('click', showLastSentJson);
+        closeLastSentJsonModalBtn.addEventListener('click', () => closeModal(lastSentJsonModal));
+
+        window.addEventListener('click', (event) => {
+            if (event.target == settingsModal) {
+                closeModal(settingsModal);
+            }
+            if (event.target == fileUploadModal) {
+                closeModal(fileUploadModal);
+            }
+            if (event.target == modelDetailsModal) {
+                closeModal(modelDetailsModal);
+            }
+            if (event.target == lastSentJsonModal) {
+                closeModal(lastSentJsonModal);
+            }
+        });
+
+        clipsBtn.addEventListener('click', () => openModal(fileUploadModal));
+        closeFileUploadModalBtn.addEventListener('click', () => closeModal(fileUploadModal));
+
+        ollamaApiUrlInput.addEventListener('input', async function() {
+            const newUrl = ollamaApiUrlInput.value.trim();
+            if (newUrl) {
+                apiUrl = newUrl;
+                localStorage.setItem('ollamaApiUrl', apiUrl);
+                updateStatus(true, 'URL da API Ollama Salva!', 'O novo endereço será usado para as próximas requisições.');
+                await fetchAndPopulateModels();
+            } else {
+                apiUrl = 'http://localhost:11434/api/chat';
+                localStorage.setItem('ollamaApiUrl', apiUrl);
+                ollamaApiUrlInput.value = apiUrl;
+                updateStatus(false, 'URL Inválida!', 'O endereço da API Ollama não pode ser vazio. Revertido para o padrão.');
+            }
+        });
+
+        numCtxSelect.addEventListener('change', function() {
+            numCtx = this.value;
+            localStorage.setItem('ollamaNumCtx', numCtx);
+            updateStatus(true, 'Configuração de Contexto Salva!', `Tamanho do contexto definido para ${numCtx === 'default' ? 'o padrão do modelo' : numCtx + ' tokens'}.`);
+        });
+
+        modelSelect.addEventListener('change', function() {
+            selectedModelValue = this.value;
+            localStorage.setItem('ollamaSelectedModel', selectedModelValue);
+            updateStatus(true, 'Configuração de Modelo Salva!', `Modelo definido para ${selectedModelValue}.`);
+        });
+
+        numPredictSelect.addEventListener('change', function() {
+            numPredict = this.value;
+            localStorage.setItem('ollamaNumPredict', numPredict);
+            updateStatus(true, 'Configuração de Resposta Salva!', `Comprimento máximo da resposta definido para ${numPredict === 'default' ? 'o padrão do modelo' : numPredict + ' tokens'}.`);
+        });
+
+        systemPromptTextarea.addEventListener('input', function() {
+            systemPrompt = this.value;
+            localStorage.setItem('ollamaSystemPrompt', systemPrompt);
+            if (systemPrompt.length > 0 && useDefaultSystemPromptCheckbox.checked) {
+                useDefaultSystemPromptCheckbox.checked = false;
+                useDefaultSystemPrompt = false;
+                localStorage.setItem('ollamaUseDefaultSystemPrompt', 'false');
+            }
+            updateStatus(true, 'Prompt do Sistema Salvo!', 'Prompt do sistema atualizado.');
+        });
+
+        useDefaultSystemPromptCheckbox.addEventListener('change', function() {
+            useDefaultSystemPrompt = this.checked;
+            localStorage.setItem('ollamaUseDefaultSystemPrompt', useDefaultSystemPrompt);
+            systemPromptTextarea.disabled = useDefaultSystemPrompt;
+            if (useDefaultSystemPrompt) {
+                systemPromptTextarea.value = '';
+                updateStatus(true, 'Prompt do Sistema Redefinido!', 'Usando o prompt do sistema padrão do modelo.');
+            } else {
+                systemPromptTextarea.value = localStorage.getItem('ollamaSystemPrompt') || '';
+                systemPrompt = systemPromptTextarea.value;
+                updateStatus(true, 'Prompt do Sistema Ativado!', 'Você pode agora definir um prompt de sistema personalizado.');
+            }
+        });
+
+        useContextMemoryCheckbox.addEventListener('change', function() {
+            useContextMemory = this.checked;
+            localStorage.setItem('ollamaUseContextMemory', useContextMemory);
+            updateStatus(true, 'Configuração de Memória de Contexto Salva!', `Memória de contexto ${useContextMemory ? 'habilitada' : 'desabilitada'}.`);
+        });
+
+        function applyPreset(presetName, saveToStorage = true) {
+            presetButtons.forEach(button => {
+                button.classList.remove('btn-active');
+            });
+
+            activePresetName = presetName;
+            if (saveToStorage) {
+               localStorage.setItem('ollamaActivePreset', activePresetName);
+            }
+
+            switch (presetName) {
+                case 'conversacao':
+                    temperature = 0.8;
+                    topP = 0.9;
+                    repeatPenalty = 1.1;
+                    topK = null;
+                    minP = null;
+                    updateStatus(true, 'Preset "Conversação" Aplicado!', 'Parâmetros de geração ajustados para conversação.');
+                    break;
+                case 'programacao':
+                    temperature = 0.3;
+                    topK = 20;
+                    topP = null;
+                    repeatPenalty = null;
+                    minP = null;
+                    updateStatus(true, 'Preset "Programação" Aplicado!', 'Parâmetros de geração ajustados para programação.');
+                    break;
+                case 'criativo':
+                    temperature = 1.2;
+                    topP = 0.95;
+                    minP = 0.05;
+                    topK = null;
+                    repeatPenalty = null;
+                    updateStatus(true, 'Preset "Criativo" Aplicado!', 'Parâmetros de geração ajustados para criatividade.');
+                    break;
+                case 'padraoModelo':
+                    temperature = null;
+                    topP = null;
+                    repeatPenalty = null;
+                    topK = null;
+                    minP = null;
+                    updateStatus(true, 'Preset "Padrão do Modelo" Aplicado!', 'Parâmetros de geração resetados para o padrão do modelo.');
+                    break;
+                default:
+                    console.warn('Preset desconhecido:', presetName);
+                    temperature = null;
+                    topP = null;
+                    repeatPenalty = null;
+                    topK = null;
+                    minP = null;
+                    activePresetName = 'padraoModelo';
+                    if (saveToStorage) {
+                        localStorage.setItem('ollamaActivePreset', activePresetName);
+                    }
+                    break;
+            }
+
+            const currentActiveButtonId = 'preset' + activePresetName.charAt(0).toUpperCase() + activePresetName.slice(1) + 'Btn';
+            const currentActiveButton = document.getElementById(currentActiveButtonId);
+            if (currentActiveButton) {
+                currentActiveButton.classList.add('btn-active');
+            } else {
+                 console.error('Botão de preset ativo não encontrado:', currentActiveButtonId);
+            }
+        }
+
+        presetConversacaoBtn.addEventListener('click', () => applyPreset('conversacao'));
+        presetProgramacaoBtn.addEventListener('click', () => applyPreset('programacao'));
+        presetCriativoBtn.addEventListener('click', () => applyPreset('criativo'));
+        presetPadraoModeloBtn.addEventListener('click', () => applyPreset('padraoModelo'));
+
+        function setupFileUpload() {
+            fileUploadArea.addEventListener('click', function() {
+                fileUploadInput.click();
+            });
+            
+            fileUploadArea.addEventListener('dragover', function(e) {
+                e.preventDefault();
+                fileUploadArea.style.borderColor = getComputedStyle(document.documentElement).getPropertyValue('--primary-color');
+                fileUploadArea.style.backgroundColor = 'rgba(123, 44, 191, 0.05)';
+            });
+            
+            fileUploadArea.addEventListener('dragleave', function() {
+                fileUploadArea.style.borderColor = '#ddd';
+                fileUploadArea.style.backgroundColor = 'transparent';
+            });
+            
+            fileUploadArea.addEventListener('drop', function(e) {
+                e.preventDefault();
+                fileUploadArea.style.borderColor = '#ddd';
+                fileUploadArea.style.backgroundColor = 'transparent';
+                
+                const files = e.dataTransfer.files;
+                handleFiles(files);
+            });
+            
+            fileUploadInput.addEventListener('change', function() {
+                handleFiles(fileUploadInput.files);
+            });
+
+            clearFilesBtn.addEventListener('click', () => clearActiveFiles(true));
+        }
+        
+        function handleFiles(files) {
+            if (files.length === 0) return;
+
+            const allowedTextTypes = ['text/plain', 'text/csv', 'application/pdf'];
+            const allowedImageTypes = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'];
+
+            let newFilesToAdd = [];
+            let newFilesContentType = null;
+
+            for (const file of Array.from(files)) {
+                let currentFileType = null;
+                if (allowedTextTypes.includes(file.type)) {
+                    currentFileType = 'text';
+                } else if (allowedImageTypes.includes(file.type)) {
+                    currentFileType = 'image';
+                } else {
+                    updateStatus(false, 'Tipo de arquivo não suportado!', `Tipo de arquivo não suportado e ignorado: ${file.name} (${file.type}). Apenas arquivos de texto (.txt, .csv, .pdf) e imagens (.png, .jpeg, .gif, .webp) são aceitos.`);
+                    continue;
+                }
+
+                if (newFilesContentType === null) {
+                    newFilesContentType = currentFileType;
+                } else if (newFilesContentType !== currentFileType) {
+                    updateStatus(false, 'Tipos de arquivo misturados!', `Não é possível anexar arquivos de diferentes categorias (texto e imagem) na mesma seleção. Arquivo ignorado: ${file.name}`);
+                    continue;
+                }
+                newFilesToAdd.push(file);
+            }
+
+            if (newFilesToAdd.length === 0) {
+                updateFileAttachedIndicator();
+                adjustLayout();
+                return;
+            }
+
+            if (activeFiles.length > 0 && activeFiles[0].contentType !== newFilesContentType) {
+                if (!confirm(`Você já tem arquivos de ${activeFiles[0].contentType === 'text' ? 'texto' : 'imagem'} anexados. Deseja substituí-los pelos novos arquivos de ${newFilesContentType === 'text' ? 'texto' : 'imagem'}?`)) {
+                    updateFileAttachedIndicator();
+                    adjustLayout();
+                    return;
+                }
+                clearActiveFiles(false);
+            }
+
+            let filesToProcessCount = 0;
+            let filesProcessed = 0;
+
+            for (const file of newFilesToAdd) {
+                if (activeFiles.length >= MAX_FILES) {
+                    updateStatus(false, 'Limite de arquivos atingido!', `Você pode anexar no máximo ${MAX_FILES} arquivos. Arquivo ignorado: ${file.name}`);
+                    continue;
+                }
+
+                filesToProcessCount++;
+                const reader = new FileReader();
+
+                reader.onload = async (e) => {
+                    try {
+                        let fileContent = null;
+                        let finalContentType = newFilesContentType;
+
+                        if (finalContentType === 'text') {
+                            if (file.type === 'application/pdf') {
+                                fileContent = await readPdfFile(e.target.result);
+                            } else {
+                                fileContent = e.target.result;
+                            }
+                        } else if (finalContentType === 'image') {
+                            fileContent = e.target.result.split(',')[1];
+                        }
+
+                        activeFiles.push({
+                            name: file.name,
+                            type: file.type,
+                            content: fileContent,
+                            contentType: finalContentType
+                        });
+                    } catch (error) {
+                        console.error(`Erro ao processar arquivo ${file.name}:`, error);
+                        updateStatus(false, 'Erro ao processar arquivo!', `Não foi possível ler o arquivo: ${file.name}. ${error.message}`);
+                    } finally {
+                        filesProcessed++;
+                        updateSelectedFilesDisplay();
+                        if (filesProcessed === filesToProcessCount) {
+                            updateStatus(true, 'Arquivos prontos!', `Todos os ${activeFiles.length} arquivos foram lidos.`);
+                            updateAttachedFilesStatus();
+                        }
+                        updateFileAttachedIndicator();
+                        adjustLayout();
+                    }
+                };
+
+                if (newFilesContentType === 'text' && file.type === 'application/pdf') {
+                    reader.readAsArrayBuffer(file);
+                } else if (newFilesContentType === 'text') {
+                    reader.readAsText(file);
+                } else if (newFilesContentType === 'image') {
+                    reader.readAsDataURL(file);
+                }
+            }
+
+            if (filesToProcessCount === 0) {
+                selectedFilesDisplay.style.display = 'none';
+                clearFilesBtn.style.display = 'none';
+                updateAttachedFilesStatus();
+                updateFileAttachedIndicator();
+                adjustLayout();
+            } else {
+                selectedFilesDisplay.style.display = 'block';
+                clearFilesBtn.style.display = 'inline-block';
+            }
+        }
+        
+        function updateSelectedFilesDisplay() {
+            selectedFilesDisplay.innerHTML = '<strong>Arquivos Anexados:</strong><ul>' +
+                activeFiles.map(file => `<li>${sanitizeHtml(file.name)} (${file.contentType === 'text' ? 'Texto' : 'Imagem'})</li>`).join('') +
+                '</ul>';
+        }
+
+        function clearActiveFiles(updateStatusToo = true) {
+            activeFiles = [];
+            selectedFilesDisplay.innerHTML = '';
+            selectedFilesDisplay.style.display = 'none';
+            clearFilesBtn.style.display = 'none';
+            if (updateStatusToo) {
+                updateStatus(true, 'Arquivos Limpos!', 'Arquivos anexados foram limpos.');
+            }
+            updateFileAttachedIndicator();
+            updateAttachedFilesStatus();
+            adjustLayout();
+            fileUploadInput.value = '';
+        }
+
+        function updateFileAttachedIndicator() {
+            if (activeFiles.length > 0) {
+                fileAttachedIndicator.style.display = 'block';
+            } else {
+                fileAttachedIndicator.style.display = 'none';
+            }
+        }
+
+        function updateStatus(success, title, info) {
+            try {
+                if (success) {
+                    statusBar.classList.remove('error');
+                    statusBar.classList.add('success');
+                    statusTitle.innerHTML = `<span>✅</span> ${sanitizeHtml(title)}`;
+                } else {
+                    statusBar.classList.remove('success');
+                    statusBar.classList.add('error');
+                    statusTitle.innerHTML = `<span>❌</span> ${sanitizeHtml(title)}`;
+                }
+                statusInfo.textContent = info;
+                adjustLayout();
+            } catch (error) {
+                console.error('Erro ao atualizar status:', error);
+            }
+        }
+
+        function updateAttachedFilesStatus() {
+            let currentInfo = 'Pronto para conversar e analisar arquivos!';
+            if (activeFiles.length > 0) {
+                const fileNames = activeFiles.map(f => f.name).join(', ');
+                currentInfo += ` | Anexados: ${fileNames}`;
+            }
+            statusInfo.textContent = currentInfo;
+            adjustLayout();
+        }
+
+        function copyToClipboard(htmlContent) {
+            try {
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+
+                if (navigator.clipboard && navigator.clipboard.write) {
+                    const htmlBlob = new Blob([htmlContent], { type: 'text/html' });
+                    const plainTextBlob = new Blob([tempDiv.innerText], { type: 'text/plain' });
+
+                    const item = new ClipboardItem({
+                        "text/html": htmlBlob,
+                        "text/plain": plainTextBlob
+                    });
+
+                    navigator.clipboard.write([item]).then(() => {
+                        alert('Conteúdo formatado copiado para a área de transferência!');
+                    }).catch(err => {
+                        console.error('Erro ao copiar conteúdo formatado:', err);
+                        copyTextFallback(tempDiv.innerText);
+                    });
+                } else {
+                    copyTextFallback(tempDiv.innerText);
+                }
+            } catch (error) {
+                console.error('Erro na função de cópia:', error);
+                alert('Erro ao copiar conteúdo');
+            }
+        }
+
+        function copyTextFallback(text) {
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                textarea.style.left = '-9999px';
+                document.body.appendChild(textarea);
+                textarea.focus();
+                textarea.select();
+                try {
+                    document.execCommand('copy');
+                    alert('Conteúdo copiado para a área de transferência!');
+                } catch (err) {
+                    console.error('Erro ao copiar texto. Por favor, copie manualmente.');
+                    alert('Erro ao copiar texto. Por favor, copie manualmente.');
+                }
+                document.body.removeChild(textarea);
+            } catch (error) {
+                console.error('Erro no fallback de cópia:', error);
+                alert('Erro ao copiar texto');
+            }
+        }
+
+        async function readPdfFile(arrayBuffer) {
+            try {
+                const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+                const numPages = pdf.numPages;
+                const pagePromises = [];
+
+                for (let i = 1; i <= numPages; i++) {
+                    pagePromises.push(
+                        pdf.getPage(i).then(page => page.getTextContent()).then(textContent => 
+                            textContent.items.map(item => item.str).join(' ')
+                        )
+                    );
+                }
+                return Promise.all(pagePromises).then(pagesText => pagesText.join('\n'));
+            } catch (error) {
+                console.error('Erro ao ler PDF:', error);
+                throw new Error(`Falha ao processar PDF: ${error.message}`);
+            }
+        }
+
+        function formatBytes(bytes, decimals = 2) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+        }
+
+        function formatAndHighlightJson(obj, indent = 0) {
+            const spaces = '  '.repeat(indent);
+            let result = '';
+
+            if (obj === null) {
+                return `<span class="json-null">null</span>`;
+            }
+            if (typeof obj === 'boolean') {
+                return `<span class="json-boolean">${obj}</span>`;
+            }
+            if (typeof obj === 'number') {
+                return `<span class="json-number">${obj}</span>`;
+            }
+            if (typeof obj === 'string') {
+                return `<span class="json-string">"${sanitizeHtml(obj)}"</span>`;
+            }
+            if (Array.isArray(obj)) {
+                if (obj.length === 0) return '[]';
+                let elements = obj.map(item => `\n${spaces}  ${formatAndHighlightJson(item, indent + 1)}`).join(',');
+                return `[\n${elements}\n${spaces}]`;
+            }
+            if (typeof obj === 'object') {
+                if (Object.keys(obj).length === 0) return '{}';
+                let elements = Object.keys(obj).map(key => {
+                    let formattedKey = `<span class="json-key">"${sanitizeHtml(key)}"</span>`;
+                    return `\n${spaces}  ${formattedKey}: ${formatAndHighlightJson(obj[key], indent + 1)}`;
+                }).join(',');
+                return `{\n${elements}\n${spaces}}`;
+            }
+            return sanitizeHtml(String(obj));
+        }
+
+        async function fetchAndPopulateModels() {
+            const ollamaBaseUrl = new URL(apiUrl).origin;
+            const tagsUrl = `${ollamaBaseUrl}/api/tags`;
+
+            modelSelect.innerHTML = '<option value="">Carregando modelos...</option>';
+
+            try {
+                const response = await fetch(tagsUrl);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Erro ao buscar modelos: ${response.status} ${response.statusText} - ${errorText}`);
+                }
+                const data = await response.json();
+                const models = data.models;
+
+                modelSelect.innerHTML = '';
+
+                if (models && models.length > 0) {
+                    models.sort((a, b) => a.name.localeCompare(b.name));
+                    models.forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model.name;
+                        option.textContent = model.name;
+                        modelSelect.appendChild(option);
+                    });
+                    if (selectedModelValue && modelSelect.querySelector(`option[value="${selectedModelValue}"]`)) {
+                        modelSelect.value = selectedModelValue;
+                    } else if (models.length > 0) {
+                        selectedModelValue = models[0].name;
+                        modelSelect.value = selectedModelValue;
+                        localStorage.setItem('ollamaSelectedModel', selectedModelValue);
+                    }
+                    updateStatus(true, 'Modelos Carregados!', `Lista de modelos atualizada do Ollama.`);
+                } else {
+                    modelSelect.innerHTML = '<option value="">Nenhum modelo encontrado</option>';
+                    selectedModelValue = '';
+                    localStorage.setItem('ollamaSelectedModel', '');
+                    updateStatus(false, 'Nenhum Modelo!', 'Nenhum modelo Ollama encontrado no servidor.');
+                }
+            } catch (error) {
+                console.error('Erro ao buscar modelos do Ollama:', error);
+                modelSelect.innerHTML = '<option value="">Erro ao carregar modelos</option>';
+                selectedModelValue = '';
+                localStorage.setItem('ollamaSelectedModel', '');
+                updateStatus(false, 'Erro ao Carregar Modelos!', `Verifique a URL da API Ollama e se o servidor está rodando. Detalhes: ${error.message}`);
+            }
+        }
+
+        function populateModelInfoModal(modelData, selectedModelName) {
+            const modalTitleElement = modelDetailsModal.querySelector('h2');
+            if (modalTitleElement) {
+                 modalTitleElement.textContent = `Detalhes do Modelo: ${sanitizeHtml(selectedModelName || 'Desconhecido')}`;
+            }
+
+            let htmlContent = `
+                <div class="model-info">
+                    <h3>Visão Geral</h3>
+                    <p><strong>Nome Completo:</strong> ${sanitizeHtml(selectedModelName || 'N/A')}</p>
+                    <p><strong>ID (digest):</strong> ${sanitizeHtml(modelData.digest || 'N/A')}</p>
+                    <p><strong>Tamanho Total:</strong> ${modelData.size ? formatBytes(modelData.size) : 'N/A'}</p>
+                    <p><strong>Família:</strong> ${sanitizeHtml(modelData.details?.family || 'N/A')}</p>
+                    <p><strong>Arquitetura:</strong> ${sanitizeHtml(modelData.details?.arch || 'N/A')}</p>
+                    <p><strong>Parâmetros:</strong> ${sanitizeHtml(modelData.details?.parameter_size || 'N/A')}</p>
+                    <p><strong>Quantização:</strong> ${sanitizeHtml(modelData.details?.quantization_level || 'N/A')}</p>
+                    <p><strong>Modificado em:</strong> ${modelData.modified_at ? new Date(modelData.modified_at).toLocaleString('pt-BR') : 'N/A'}</p>
+                </div>
+
+                <div class="model-info">
+                    <h3>Conteúdo do Modelfile:</h3>
+                    <pre><code class="language-plaintext">${sanitizeHtml(modelData.modelfile || 'N/A')}</code></pre>
+                </div>
+
+                <div class="model-info">
+                    <h3>Parâmetros de Configuração:</h3>
+                    <pre><code class="language-json">${formatAndHighlightJson(modelData.parameters || {})}</code></pre>
+                </div>
+
+                <div class="model-info">
+                    <h3>Detalhes Completos (JSON Original):</h3>
+                    <pre><code class="language-json">${formatAndHighlightJson(modelData)}</code></pre>
+                </div>
+            `;
+            modelDetailsContent.innerHTML = htmlContent;
+        }
+
+        function showLastSentJson() {
+            if (lastSentJson) {
+                lastSentJsonContent.innerHTML = `<pre><code class="language-json">${formatAndHighlightJson(lastSentJson)}</code></pre>`;
+            } else {
+                lastSentJsonContent.innerHTML = `<div class="error-message">Nenhum JSON de requisição foi enviado ainda. Envie uma mensagem para ver os detalhes aqui.</div>`;
+            }
+            openModal(lastSentJsonModal);
+        }
+
+        async function showSelectedModelInfo() {
+            showSelectedModelInfoBtn.disabled = true;
+            const originalButtonText = showSelectedModelInfoBtn.innerHTML;
+            showSelectedModelInfoBtn.innerHTML = '<span class="loading"></span> Carregando...';
+
+            const currentModel = modelSelect.value;
+            if (!currentModel) {
+                 updateStatus(false, 'Nenhum Modelo Selecionado!', 'Por favor, selecione um modelo para ver suas informações.');
+                 showSelectedModelInfoBtn.disabled = false;
+                 showSelectedModelInfoBtn.innerHTML = originalButtonText;
+                 return;
+            }
+
+            let ollamaBaseUrl = '';
+            try {
+                const url = new URL(apiUrl);
+                ollamaBaseUrl = url.origin;
+            } catch (e) {
+                console.error("Erro ao parsear apiUrl para obter base URL:", e);
+                updateStatus(false, 'Erro de URL!', 'A URL da API Ollama configurada é inválida.');
+                showSelectedModelInfoBtn.disabled = false;
+                showSelectedModelInfoBtn.innerHTML = originalButtonText;
+                return;
+            }
+
+            const showUrl = `${ollamaBaseUrl}/api/show`;
+
+            try {
+                const response = await fetch(showUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ name: currentModel })
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Resposta de erro desconhecida.' }));
+                    throw new Error(`Erro ${response.status}: ${errorData.error || response.statusText}`);
+                }
+
+                const data = await response.json();
+
+                populateModelInfoModal(data, currentModel); 
+                openModal(modelDetailsModal);
+
+                updateStatus(true, 'Informações do Modelo Carregadas!', `Detalhes para "${currentModel}" exibidos.`);
+
+            } catch (error) {
+                console.error('Erro ao obter detalhes do modelo Ollama:', error);
+                updateStatus(false, 'Falha ao Carregar Informações do Modelo!', `Erro: ${error.message}`);
+                
+                modelDetailsContent.innerHTML = `<div class="critical-error">
+                    <h3>Erro ao Carregar Detalhes do Modelo</h3>
+                    <p>Não foi possível obter informações para o modelo <strong>${sanitizeHtml(currentModel)}</strong>.</p>
+                    <p>${sanitizeHtml(error.message)}</p>
+                    <p>Verifique se o Ollama está em execução e se o modelo está instalado.</p>
+                </div>`;
+                openModal(modelDetailsModal);
+
+            } finally {
+                showSelectedModelInfoBtn.disabled = false;
+                showSelectedModelInfoBtn.innerHTML = originalButtonText;
+            }
+        }
+
+        sendButton.addEventListener('click', sendMessage);
+
+        async function sendMessage() {
+            sendButton.innerHTML = '<span class="loading"></span> Enviando...';
+            sendButton.disabled = true;
+            clipsBtn.disabled = true;
+
+            try {
+                const message = messageInput.value.trim();
+                const selectedModel = modelSelect.value;
+                
+                if (message === '' && activeFiles.length === 0 && (useDefaultSystemPrompt && systemPrompt.trim() === '')) {
+                    updateStatus(false, 'Mensagem Vazia!', 'Por favor, digite uma mensagem, anexe um arquivo, ou configure um prompt de sistema para começar.');
+                    sendButton.innerHTML = 'Enviar';
+                    sendButton.disabled = false;
+                    clipsBtn.disabled = false;
+                    return;
+                }
+
+                let displayMessage = message;
+                if (activeFiles.length > 0) {
+                    const fileNames = activeFiles.map(f => f.name).join(', ');
+                    displayMessage = `(Arquivos: ${fileNames}) ${message}`;
+                }
+                addMessage('user', displayMessage);
+
+                let userMessageContentForAPI = message;
+                const imageContents = [];
+
+                if (activeFiles.some(file => file.contentType === 'image')) {
+                    userMessageContentForAPI = '��️ **Atenção:** Imagens foram anexadas. Para que elas sejam processadas, certifique-se de que o modelo Ollama selecionado (`' + selectedModel + '`) é multimodal (ex: `llava`).\n\n' + userMessageContentForAPI;
+                    addMessage('bot', '🖼️ **Atenção:** Imagens foram anexadas. Para que elas sejam processadas, certifique-se de que o modelo Ollama selecionado (`' + selectedModel + '`) é multimodal (ex: `llava`).');
+                }
+
+                userMessageContentForAPI += "\n\nResponda à minha pergunta usando formatação Markdown, incluindo títulos, listas e negrito quando apropriado, mas não mencione Markdown na sua resposta.";
+                if (activeFiles.length > 0) {
+                    userMessageContentForAPI += "\n\nAnalise o conteúdo dos arquivos anexados. Se for um documento, extraia as informações relevantes. Se for código e você for solicitado a modificá-lo, por favor, devolva a *versão completa* do código com as alterações solicitadas, e não apenas os trechos alterados. Certifique-se de que o código completo esteja dentro de um bloco de código Markdown (```linguagem\n...\n```).";
+                }
+                
+                activeFiles.forEach(file => {
+                    if (file.contentType === 'text') {
+                        userMessageContentForAPI += `\n\nConteúdo do arquivo "${file.name}":\n\n${file.content}`;
+                    } else if (file.contentType === 'image') {
+                        imageContents.push(file.content);
+                    }
+                });
+
+                const messagesForOllamaAPI = [];
+                if (!useDefaultSystemPrompt && systemPrompt.trim()) {
+                    messagesForOllamaAPI.push({ role: "system", content: systemPrompt.trim() });
+                }
+                
+                if (useContextMemory) {
+                    messagesForOllamaAPI.push(...chatHistory); 
+                }
+
+                const currentUserMessageForAPI = { role: "user", content: userMessageContentForAPI.trim() };
+                if (imageContents.length > 0) currentUserMessageForAPI.images = imageContents;
+
+                messagesForOllamaAPI.push(currentUserMessageForAPI);
+
+                let estimatedTotalTokens = 0;
+                messagesForOllamaAPI.forEach(msg => {
+                    if (msg.content) {
+                         estimatedTotalTokens += msg.content.length / 4;
+                    }
+                    if (msg.images && msg.images.length > 0) {
+                        estimatedTotalTokens += msg.images.length * 500;
+                    }
+                });
+
+                const maxTokens = parseInt(numCtx);
+                if (numCtx !== 'default' && estimatedTotalTokens > maxTokens) {
+                    const userConfirmed = confirm(
+                        `A conversa atual (incluindo o prompt do sistema, histórico e sua mensagem) tem uma estimativa de ${Math.ceil(estimatedTotalTokens)} tokens.\n\n` +
+                        `O limite de tokens configurado para o modelo é de ${maxTokens} tokens.\n\n` +
+                        `Isso pode exceder o limite do modelo e causar erros ou respostas incompletas. Deseja continuar mesmo assim?`
+                    );
+
+                    if (!userConfirmed) {
+                        updateStatus(false, 'Envio Cancelado!', 'Mensagem não enviada devido ao potencial limite de tokens excedido.');
+                        sendButton.innerHTML = 'Enviar';
+                        sendButton.disabled = false;
+                        clipsBtn.disabled = false; 
+                        return;
+                    }
+                }
+                
+                chatHistory.push(currentUserMessageForAPI);
+
+                const ollamaRequestBody = {
+                    model: selectedModel,
+                    messages: messagesForOllamaAPI,
+                    stream: true,
+                    options: {}
+                };
+
+                if (numCtx !== 'default') {
+                    ollamaRequestBody.options.num_ctx = parseInt(numCtx);
+                }
+                if (numPredict !== 'default') {
+                    ollamaRequestBody.options.num_predict = parseInt(numPredict);
+                }
+                
+                if (temperature !== null) {
+                    ollamaRequestBody.options.temperature = temperature;
+                }
+                if (topP !== null) {
+                    ollamaRequestBody.options.top_p = topP;
+                }
+                if (repeatPenalty !== null) {
+                    ollamaRequestBody.options.repeat_penalty = repeatPenalty;
+                }
+                if (topK !== null) {
+                    ollamaRequestBody.options.top_k = topK;
+                }
+                if (minP !== null) {
+                    ollamaRequestBody.options.min_p = minP;
+                }
+
+                let botResponseContent = '';
+                const botMessageContentDiv = createBotMessageElementForStreaming(); 
+                const textDecoder = new TextDecoder();
+                let buffer = '';
+
+                try {
+                    lastSentJson = JSON.parse(JSON.stringify(ollamaRequestBody)); 
+
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(ollamaRequestBody)
+                    });
+                    
+                    if (!response.ok) {
+                        chatHistory.pop();
+                        try {
+                            const errorData = await response.json();
+                            botMessageContentDiv.innerHTML = safeMarkdownRender(`<div class="error-message">Erro da API Ollama: ${response.status} - ${sanitizeHtml(errorData.error || JSON.stringify(errorData))}</div>`);
+                            updateStatus(false, 'Erro na API Ollama!', `Erro: ${response.status} - ${errorData.error || 'Resposta desconhecida'}`);
+                        } catch (jsonParseError) {
+                            const rawText = await response.text();
+                            botMessageContentDiv.innerHTML = safeMarkdownRender(`<div class="error-message">Erro de Resposta Inesperada do Ollama: ${response.status}. Resposta: <pre class="html-error-display">${sanitizeHtml(rawText)}</pre></div>`);
+                            updateStatus(false, 'Erro de Resposta Ollama!', 'O servidor Ollama retornou uma resposta inesperada.');
+                        }
+                    } else {
+                        const reader = response.body.getReader();
+                        while (true) {
+                            const { value, done } = await reader.read();
+                            if (done) break;
+
+                            buffer += textDecoder.decode(value, { stream: true });
+
+                            const lines = buffer.split('\n');
+                            buffer = lines.pop();
+
+                            for (const line of lines) {
+                                if (line.trim() === '') continue;
+
+                                try {
+                                    const data = JSON.parse(line);
+                                    if (data.done === false && data.message && typeof data.message.content === 'string') {
+                                        botResponseContent += data.message.content;
+                                        botMessageContentDiv.innerHTML = safeMarkdownRender(botResponseContent);
+                                        chatMessages.scrollTop = chatMessages.scrollHeight;
+                                    } else if (data.done === true) {
+                                    }
+                                } catch (parseError) {
+                                    console.warn('Erro ao parsear chunk JSON (pode ser incompleto):', parseError, 'Line:', line);
+                                }
+                            }
+                        }
+
+                        if (buffer.trim() !== '') {
+                            try {
+                                const data = JSON.parse(buffer);
+                                if (data.done === false && data.message && typeof data.message.content === 'string') {
+                                    botResponseContent += data.message.content;
+                                    botMessageContentDiv.innerHTML = safeMarkdownRender(botResponseContent);
+                                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                                }
+                            } catch (parseError) {
+                                console.warn('Erro ao parsear o último chunk JSON:', parseError, 'Buffer:', buffer);
+                                if (!botResponseContent) { 
+                                    botMessageContentDiv.innerHTML = safeMarkdownRender(`<div class="error-message">Erro ao finalizar resposta do Ollama. Resposta incompleta ou inválida.</div>`);
+                                }
+                            }
+                        }
+
+                        if (botResponseContent) {
+                            updateStatus(true, 'Resposta Recebida!', 'Ollama respondeu com sucesso.');
+                            chatHistory.push({ role: "assistant", content: botResponseContent });
+
+                            const copyButton = document.createElement('button');
+                            copyButton.className = 'btn copy-btn';
+                            copyButton.textContent = 'Copiar';
+                            copyButton.onclick = () => {
+                                try {
+                                    copyToClipboard(botMessageContentDiv.innerHTML);
+                                } catch (error) {
+                                    console.error('Erro ao copiar:', error);
+                                    alert('Erro ao copiar conteúdo');
+                                }
+                            };
+                            botMessageContentDiv.parentNode.appendChild(copyButton); 
+                        } else {
+                            updateStatus(false, 'Resposta Vazia!', 'Ollama não forneceu conteúdo na resposta.');
+                            if (!botMessageContentDiv.innerHTML) {
+                                botMessageContentDiv.innerHTML = safeMarkdownRender(`<div class="error-message">A resposta do modelo não contém conteúdo.</div>`);
+                            }
+                            chatHistory.pop();
+                        }
+                    }
+                } catch (error) {
+                    chatHistory.pop();
+                    console.error('Erro de rede ou comunicação com Ollama:', error);
+                    botMessageContentDiv.innerHTML = safeMarkdownRender(`<div class="error-message">Erro de Conexão: Não foi possível conectar ao servidor Ollama. Verifique se o Ollama está rodando e se o IP/porta estão corretos (${sanitizeHtml(apiUrl)}). Detalhes: ${sanitizeHtml(error.message)}</div>`);
+                    updateStatus(false, 'Erro de Conexão!', 'Não foi possível conectar ao Ollama.');
+                }
+
+                messageInput.value = '';
+                clearActiveFiles();
+
+            } catch (error) {
+                console.error('Erro crítico na função sendMessage:', error);
+                addMessage('bot', `<div class="critical-error">
+                    <h3>Erro Crítico</h3>
+                    <p>Falha inesperada ao processar mensagem.</p>
+                    <pre>${sanitizeHtml(error.message)}</pre>
+                </div>`);
+                updateStatus(false, 'Erro Crítico!', 'Falha inesperada no processamento da mensagem.');
+                if (chatHistory.length > 0 && chatHistory[chatHistory.length - 1].role === "user") {
+                    chatHistory.pop();
+                }
+            } finally {
+                sendButton.innerHTML = 'Enviar';
+                sendButton.disabled = false;
+                clipsBtn.disabled = false;
+            }
+        }
+
+        messageInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+
+        clearChatBtn.addEventListener('click', function() {
+            if (confirm('Tem certeza que deseja limpar todo o histórico do chat? Esta ação não pode ser desfeita.')) {
+                try {
+                    chatMessages.innerHTML = '';
+                    messageInput.value = '';
+                    chatHistory = [];
+                    lastSentJson = null;
+
+                    numPredict = 'default';
+                    localStorage.setItem('ollamaNumPredict', numPredict);
+                    numPredictSelect.value = numPredict;
+
+                    systemPrompt = '';
+                    localStorage.setItem('ollamaSystemPrompt', systemPrompt);
+                    systemPromptTextarea.value = systemPrompt;
+
+                    useDefaultSystemPrompt = true;
+                    localStorage.setItem('ollamaUseDefaultSystemPrompt', useDefaultSystemPrompt);
+                    useDefaultSystemPromptCheckbox.checked = useDefaultSystemPrompt;
+                    systemPromptTextarea.disabled = useDefaultSystemPrompt;
+
+                    useContextMemory = true;
+                    localStorage.setItem('ollamaUseContextMemory', useContextMemory);
+                    useContextMemoryCheckbox.checked = useContextMemory;
+
+                    applyPreset('padraoModelo', true);
+
+                    addMessage('bot', 'Olá! Sou o assistente Ollama. Como posso ajudar você hoje?');
+                    updateStatus(true, 'Chat Limpo!', 'O histórico de mensagens e as configurações personalizadas foram apagados.');
+                } catch (error) {
+                    console.error('Erro ao limpar chat:', error);
+                    updateStatus(false, 'Erro ao Limpar!', 'Falha ao limpar o histórico do chat.');
+                }
+            }
+        });
+
+        window.addEventListener('error', function(e) {
+            console.error('Erro JavaScript global:', e.error);
+            updateStatus(false, 'Erro de JavaScript!', `Erro detectado: ${e.message}`);
+        });
+
+        window.addEventListener('unhandledrejection', function(e) {
+            console.error('Promise rejeitada não tratada:', e.reason);
+            updateStatus(false, 'Erro de Promise!', `Promise rejeitada: ${e.reason}`);
+        });
+    </script>
+</body>
+</html>
