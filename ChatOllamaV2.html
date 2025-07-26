@@ -160,6 +160,77 @@
             border-color: #2a3142;
         }
 
+        /* Estilos para imagens nas mensagens */
+        .message-images {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .message-image {
+            max-width: 100%;
+            height: auto;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .message-image:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        /* Modal para visualização de imagem em tela cheia */
+        .image-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 2000;
+            cursor: pointer;
+        }
+
+        .image-modal-content {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            max-width: 90%;
+            max-height: 90%;
+        }
+
+        .image-modal-content img {
+            max-width: 100%;
+            max-height: 90vh;
+            border-radius: 8px;
+        }
+
+        .image-modal-close {
+            position: absolute;
+            top: 2rem;
+            right: 2rem;
+            color: white;
+            font-size: 2rem;
+            cursor: pointer;
+            background: rgba(0, 0, 0, 0.5);
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.2s;
+        }
+
+        .image-modal-close:hover {
+            background: rgba(0, 0, 0, 0.8);
+        }
+
         /* Input Area */
         .input-area {
             border-top: 1px solid var(--border-color);
@@ -188,6 +259,11 @@
             display: flex;
             align-items: center;
             gap: 0.5rem;
+        }
+
+        .file-chip.image-chip {
+            background: #1a2f4a;
+            border-color: #2a3f5a;
         }
 
         .file-remove {
@@ -817,6 +893,14 @@
         </div>
     </div>
 
+    <!-- Image Modal -->
+    <div class="image-modal" id="imageModal" onclick="app.closeImageModal()">
+        <div class="image-modal-close">×</div>
+        <div class="image-modal-content">
+            <img id="modalImage" src="" alt="">
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div class="modal" id="settingsModal">
         <div class="modal-content">
@@ -900,6 +984,8 @@
                 this.abortController = null;
                 this.activeArtifact = null;
                 this.codeBlocks = new Map(); // Armazenar códigos originais
+                this.attachedImages = []; // Armazenar imagens em base64
+                this.attachedImageUrls = []; // Armazenar URLs das imagens para exibição
                 
                 this.init();
             }
@@ -943,6 +1029,14 @@
                         e.target.style.display = 'none';
                     }
                 });
+
+                // Prevent image modal content click from closing
+                const modalContent = document.querySelector('.image-modal-content');
+                if (modalContent) {
+                    modalContent.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                    });
+                }
             }
 
             loadSettings() {
@@ -1032,9 +1126,10 @@
                 
                 this.attachedFiles.forEach((file, index) => {
                     const chip = document.createElement('div');
-                    chip.className = 'file-chip';
+                    const isImage = file.type.startsWith('image/');
+                    chip.className = `file-chip ${isImage ? 'image-chip' : ''}`;
                     chip.innerHTML = `
-                        <span>${file.name}</span>
+                        <span>${isImage ? '🖼️' : '📄'} ${file.name}</span>
                         <span class="file-remove" onclick="app.removeFile(${index})">×</span>
                     `;
                     container.appendChild(chip);
@@ -1050,8 +1145,10 @@
                 if (confirm('Tem certeza que deseja limpar toda a conversa?')) {
                     this.messages = [];
                     this.artifacts.clear();
-                    this.codeBlocks.clear(); // Limpar também o armazenamento de códigos
+                    this.codeBlocks.clear();
                     this.activeArtifact = null;
+                    this.attachedImages = [];
+                    this.attachedImageUrls = [];
                     document.getElementById('messagesArea').innerHTML = '';
                     document.getElementById('artifactsTabs').innerHTML = '';
                     document.getElementById('artifactsContent').innerHTML = `
@@ -1080,26 +1177,46 @@
                 
                 // Criar mensagem do usuário
                 let userMessage = message;
-                if (this.attachedFiles.length > 0) {
-                    const filesList = this.attachedFiles.map(f => f.name).join(', ');
-                    userMessage += `\n\n[Arquivos anexados: ${filesList}]`;
-                }
+                let imageUrls = [];
                 
-                // Adicionar mensagem à UI
-                this.addMessage('user', userMessage);
+                // Processar arquivos anexados primeiro para obter URLs das imagens
+                this.attachedImages = [];
+                this.attachedImageUrls = [];
+                let textFileContent = '';
                 
-                // Processar arquivos anexados
-                let fullMessage = message;
                 for (const file of this.attachedFiles) {
-                    if (file.type.startsWith('text/') || file.name.match(/\.(txt|md|json|xml|csv|log)$/i)) {
+                    if (file.type.startsWith('image/')) {
+                        try {
+                            const base64 = await this.readFileAsBase64(file);
+                            const dataUrl = await this.readFileAsDataUrl(file);
+                            
+                            if (base64 && base64.length > 0) {
+                                this.attachedImages.push(base64);
+                                this.attachedImageUrls.push(dataUrl);
+                                imageUrls.push(dataUrl);
+                                console.log(`Imagem ${file.name} processada com sucesso`);
+                            } else {
+                                console.error(`Falha ao processar imagem ${file.name}: base64 vazio`);
+                            }
+                        } catch (error) {
+                            console.error('Erro ao ler imagem:', error);
+                            alert(`Erro ao processar a imagem ${file.name}. Por favor, tente novamente.`);
+                        }
+                    } else if (file.type.startsWith('text/') || file.name.match(/\.(txt|md|json|xml|csv|log)$/i)) {
                         try {
                             const content = await this.readFileAsText(file);
-                            fullMessage += `\n\n--- Conteúdo de ${file.name} ---\n${content}`;
+                            textFileContent += `\n\n--- Conteúdo de ${file.name} ---\n${content}`;
                         } catch (error) {
                             console.error('Erro ao ler arquivo:', error);
                         }
                     }
                 }
+                
+                // Adicionar mensagem à UI com imagens
+                this.addMessage('user', userMessage, imageUrls);
+                
+                // Criar mensagem completa para o modelo
+                let fullMessage = message + textFileContent;
                 
                 // Limpar input e arquivos
                 input.value = '';
@@ -1108,7 +1225,22 @@
                 this.updateAttachedFiles();
                 
                 // Adicionar mensagem à lista
-                this.messages.push({ role: 'user', content: fullMessage });
+                const messageObj = { 
+                    role: 'user', 
+                    content: fullMessage,
+                    displayImages: imageUrls // Salvar URLs para exibição futura
+                };
+                
+                if (this.attachedImages.length > 0) {
+                    const modelName = settings.model.toLowerCase();
+                    if (!modelName.includes('llava') && !modelName.includes('bakllava') && !modelName.includes('vision')) {
+                        alert('Atenção: O modelo selecionado pode não suportar imagens. Use modelos como llava, bakllava ou outros modelos de visão.');
+                    }
+                    messageObj.images = this.attachedImages;
+                    console.log(`Enviando ${this.attachedImages.length} imagem(ns) com a mensagem`);
+                }
+                
+                this.messages.push(messageObj);
                 
                 // Gerar resposta
                 this.generateResponse();
@@ -1121,6 +1253,47 @@
                     reader.onerror = reject;
                     reader.readAsText(file);
                 });
+            }
+
+            readFileAsBase64(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        try {
+                            const dataUrl = e.target.result;
+                            const base64 = dataUrl.split(',')[1];
+                            resolve(base64);
+                        } catch (error) {
+                            console.error('Erro ao converter imagem para base64:', error);
+                            reject(error);
+                        }
+                    };
+                    reader.onerror = error => {
+                        console.error('Erro ao ler arquivo:', error);
+                        reject(error);
+                    };
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            readFileAsDataUrl(file) {
+                return new Promise((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = e => resolve(e.target.result);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(file);
+                });
+            }
+
+            openImageModal(imageSrc) {
+                const modal = document.getElementById('imageModal');
+                const modalImage = document.getElementById('modalImage');
+                modalImage.src = imageSrc;
+                modal.style.display = 'block';
+            }
+
+            closeImageModal() {
+                document.getElementById('imageModal').style.display = 'none';
             }
 
             async generateResponse() {
@@ -1143,10 +1316,20 @@
                     
                     // Histórico de mensagens
                     if (settings.useMemory !== false) {
-                        apiMessages.push(...this.messages);
+                        this.messages.forEach(msg => {
+                            const apiMsg = { role: msg.role, content: msg.content };
+                            if (msg.images && msg.images.length > 0) {
+                                apiMsg.images = msg.images;
+                            }
+                            apiMessages.push(apiMsg);
+                        });
                     } else {
-                        // Apenas última mensagem
-                        apiMessages.push(this.messages[this.messages.length - 1]);
+                        const lastMsg = this.messages[this.messages.length - 1];
+                        const apiMsg = { role: lastMsg.role, content: lastMsg.content };
+                        if (lastMsg.images && lastMsg.images.length > 0) {
+                            apiMsg.images = lastMsg.images;
+                        }
+                        apiMessages.push(apiMsg);
                     }
                     
                     // Configurar request
@@ -1155,6 +1338,11 @@
                         messages: apiMessages,
                         stream: true
                     };
+                    
+                    const hasImages = apiMessages.some(msg => msg.images && msg.images.length > 0);
+                    if (hasImages) {
+                        console.log('Enviando mensagem com imagens para o modelo:', settings.model);
+                    }
                     
                     if (settings.contextSize) {
                         requestBody.options = requestBody.options || {};
@@ -1233,18 +1421,31 @@
                 }
             }
 
-            addMessage(role, content) {
+            addMessage(role, content, images = []) {
                 const messageId = `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                 const messagesArea = document.getElementById('messagesArea');
                 
                 const messageDiv = document.createElement('div');
                 messageDiv.className = `message ${role}`;
                 messageDiv.id = messageId;
+                
+                let imagesHtml = '';
+                if (images.length > 0) {
+                    imagesHtml = '<div class="message-images">';
+                    images.forEach((imageUrl, index) => {
+                        imagesHtml += `<img class="message-image" src="${imageUrl}" alt="Imagem anexada ${index + 1}" onclick="app.openImageModal('${imageUrl}')" />`;
+                    });
+                    imagesHtml += '</div>';
+                }
+                
                 messageDiv.innerHTML = `
                     <div class="message-header">
                         <span class="message-role">${role === 'user' ? 'Você' : 'Assistente'}</span>
                     </div>
-                    <div class="message-content">${content}</div>
+                    <div class="message-content">
+                        ${content}
+                        ${imagesHtml}
+                    </div>
                 `;
                 
                 messagesArea.appendChild(messageDiv);
@@ -1256,7 +1457,13 @@
             updateMessage(messageId, content) {
                 const messageContent = document.querySelector(`#${messageId} .message-content`);
                 if (messageContent) {
-                    messageContent.innerHTML = content;
+                    // Preservar imagens se existirem
+                    const existingImages = messageContent.querySelector('.message-images');
+                    if (existingImages) {
+                        messageContent.innerHTML = content + existingImages.outerHTML;
+                    } else {
+                        messageContent.innerHTML = content;
+                    }
                     const messagesArea = document.getElementById('messagesArea');
                     messagesArea.scrollTop = messagesArea.scrollHeight;
                 }
@@ -1281,13 +1488,10 @@
                 // Processar blocos de código com sintaxe destacada
                 processedText = processedText.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
                     const language = lang || 'text';
-                    // Criar um ID único para cada bloco de código
                     const codeId = `code-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
                     
-                    // Decodificar o código escapado para obter o original
                     const originalCode = code.trim().replace(/&lt;/g, '<').replace(/&gt;/g, '>');
                     
-                    // Armazenar o código original no Map
                     this.codeBlocks.set(codeId, originalCode);
                     
                     return `<div class="code-block" data-code-id="${codeId}">
@@ -1301,37 +1505,29 @@
                     </div>`;
                 });
                 
-                // Processar markdown básico (agora com HTML escapado)
-                // Headers
+                // Processar markdown básico
                 processedText = processedText.replace(/^### (.*?)$/gm, '<h3>$1</h3>');
                 processedText = processedText.replace(/^## (.*?)$/gm, '<h2>$1</h2>');
                 processedText = processedText.replace(/^# (.*?)$/gm, '<h1>$1</h1>');
                 
-                // Bold
                 processedText = processedText.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
                 processedText = processedText.replace(/__(.*?)__/g, '<strong>$1</strong>');
                 
-                // Italic (cuidado para não conflitar com bold)
                 processedText = processedText.replace(/(?<!\*)\*(?!\*)([^*]+)\*(?!\*)/g, '<em>$1</em>');
                 processedText = processedText.replace(/(?<!_)_(?!_)([^_]+)_(?!_)/g, '<em>$1</em>');
                 
-                // Inline code
                 processedText = processedText.replace(/`([^`]+)`/g, '<code>$1</code>');
                 
-                // Links
                 processedText = processedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
                 
-                // Lists
                 processedText = processedText.replace(/^\* (.+)$/gm, '<li>$1</li>');
                 processedText = processedText.replace(/^- (.+)$/gm, '<li>$1</li>');
                 processedText = processedText.replace(/^\d+\. (.+)$/gm, '<li>$1</li>');
                 
-                // Wrap consecutive li elements
                 processedText = processedText.replace(/(<li>.*?<\/li>\s*)+/g, (match) => {
                     return '<ul>' + match + '</ul>';
                 });
                 
-                // Paragraphs - evitar envolver blocos de código
                 const parts = processedText.split(/(<div class="code-block"[\s\S]*?<\/div>)/);
                 processedText = parts.map(part => {
                     if (part.includes('code-block')) {
@@ -1349,7 +1545,6 @@
             }
 
             copyCodeFromMessage(codeId) {
-                // Recuperar o código original do Map
                 const originalCode = this.codeBlocks.get(codeId);
                 
                 if (originalCode) {
@@ -1381,7 +1576,6 @@
                     const language = match[1] || 'text';
                     const code = match[2].trim();
                     
-                    // Apenas criar artifacts para blocos de código substanciais
                     if (code.length > 50) {
                         artifactCount++;
                         const artifactId = `artifact-${Date.now()}-${artifactCount}`;
@@ -1411,14 +1605,12 @@
                 
                 let isFirst = true;
                 this.artifacts.forEach((artifact, id) => {
-                    // Tab
                     const tab = document.createElement('button');
                     tab.className = `artifact-tab ${isFirst ? 'active' : ''}`;
                     tab.textContent = artifact.title;
                     tab.onclick = () => this.selectArtifact(id);
                     tabsContainer.appendChild(tab);
                     
-                    // Content
                     const content = document.createElement('div');
                     content.className = `artifact-item ${isFirst ? 'active' : ''}`;
                     content.id = id;
@@ -1443,7 +1635,6 @@
             }
 
             selectArtifact(id) {
-                // Update tabs
                 document.querySelectorAll('.artifact-tab').forEach((tab, index) => {
                     tab.classList.remove('active');
                 });
@@ -1455,7 +1646,6 @@
                     tabs[index].classList.add('active');
                 }
                 
-                // Update content
                 document.querySelectorAll('.artifact-item').forEach(item => {
                     item.classList.remove('active');
                 });
@@ -1500,7 +1690,6 @@
             }
 
             showNotification(message) {
-                // Implementação simples de notificação
                 console.log(message);
             }
         }
